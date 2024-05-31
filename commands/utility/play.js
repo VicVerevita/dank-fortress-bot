@@ -1,7 +1,7 @@
-const ytdl = require('ytdl-core');
 const ytSearch = require('yt-search');
 const { SlashCommandBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ActionRowBuilder } = require('discord.js');
-const { joinVoiceChannel, NoSubscriberBehavior, createAudioPlayer, createAudioResource, StreamType } = require('@discordjs/voice');
+const { joinVoiceChannel,} = require('@discordjs/voice');
+const { queue } = require('./queue');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -49,17 +49,17 @@ module.exports = {
             for (let i = 0; i < videoOptions.length; i++) {
                 select.addOptions(
                     new StringSelectMenuOptionBuilder()
-                        .setLabel(`${videoOptions[i].author.name} - ${videoOptions[i].title}`)
+                        .setLabel(`${videoOptions[i].author.name.substring(0, 49)} - ${videoOptions[i].title.substring(0, 49)}`)
                         .setValue(videoOptions[i].url)
-                        .setDescription(videoOptions[i].description.substring(0, 80))
+                        .setDescription(videoOptions[i].description !== '' ? videoOptions[i].description.substring(0, 60) + '...' :'No description found')
                 );
             }
 
             const row = new ActionRowBuilder().addComponents(select);
-
             const response = await interaction.reply({
                 content: 'Choose the video you want to play!',
                 components: [row],
+                fetchReply: true,
             });
 
             const collectorFilter = i => i.user.id === interaction.user.id;
@@ -67,22 +67,9 @@ module.exports = {
             try {
                 const option = await response.awaitMessageComponent({ filter: collectorFilter, time: 60_000 });
 
-                const stream = ytdl(option.values[0], {filter: 'audioonly'});
-                const resource = createAudioResource(stream, 
-                    {
-                        inputType: StreamType.Arbitrary,
-                        inlineVolume: true
-                    });
+                await option.deferUpdate();
 
-                const player = createAudioPlayer();
-                player.on('subscribe', l => { });
-                player.play(resource);
-                
-                const subscription = connection.subscribe(player);
-
-                if (subscription) {
-                    setTimeout(() => subscription.unsubscribe(), 1800_000);
-                }
+                await queue.play(interaction, connection, option);
             } catch (e) {
                 console.log(e);
                 await interaction.editReply({ content: 'Selected no option within 1 minute, cancelling.', components: [] });
